@@ -11,6 +11,7 @@
     "sync": "node --env-file=.env scripts/sync.js",
     "threads": "node --env-file=.env scripts/threads.js",
     "reply": "node --env-file=.env scripts/reply.js",
+    "create-bucket": "node --env-file=.env scripts/create-bucket.js",
     "s3check": "node --env-file=.env scripts/s3-check.js",
     "test": "node --test test/portal.test.js"
   },
