@@ -53,14 +53,14 @@ Customer ids: lowercase letters/digits/`-`/`_`, 3–41 chars (e.g. `c-anna-m`).
 
 ### 2. Email (Resend)
 
-Create a Resend account, verify the `konihaus.ch` domain (SPF/DKIM DNS records) and create an API key. Without `RESEND_API_KEY` the app prints emails to the log, which is handy locally.
+Emails go through Brevo (`BREVO_API_KEY`, sender on the authenticated `konihaus.ch` domain) or Resend (`RESEND_API_KEY`). With neither key the app prints emails to the log, which is handy locally.
 
 ### 3. Vercel
 
 1. Import this repo as a **new project**. **Plan note:** Vercel's free Hobby plan is restricted to personal, non-commercial use
    ([Hobby plan](https://vercel.com/docs/plans/hobby), [fair use](https://vercel.com/docs/limits/fair-use-guidelines#commercial-usage)) — a paid customer portal needs Pro (or another host).
 2. Storage is **Safe Swiss Cloud** (S3-compatible, same account as the konihaus.ch dashboard): no OIDC needed. Only use OIDC (Settings → Security) if you move back to AWS.
-3. Environment variables (see `.env.example`): `BASE_URL`, `SESSION_SECRET`, `S3_ENDPOINT` (`https://s3.ewstorage.ch`), `S3_REGION` (`ch-zh1`), `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_EMAIL`. Tick **Sensitive** on the keys and the secrets.
+3. Environment variables (see `.env.example`): `BASE_URL`, `SESSION_SECRET`, `S3_ENDPOINT` (`https://s3.ewstorage.ch`), `S3_REGION` (`ch-zh1`), `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `BREVO_API_KEY`, `MAIL_FROM`, `ADMIN_EMAIL`. Tick **Sensitive** on the keys and the secrets.
    Before going live run `npm run s3check` once: it tests the conditional writes (create-only-if-new, update-only-if-unchanged) that the login links and messages depend on.
 4. `vercel.json` pins functions to `fra1` (Frankfurt). Vercel's default is Washington, D.C.
 5. Settings → Domains: add `my.konihaus.ch`, then create the DNS record Vercel shows (usually a CNAME).
@@ -70,7 +70,7 @@ Create a Resend account, verify the `konihaus.ch` domain (SPF/DKIM DNS records) 
 ### 4. Local development
 
 ```bash
-cp .env.example .env     # fill in values (use your own AWS profile; leave RESEND_API_KEY empty)
+cp .env.example .env     # fill in values (use your own AWS profile; leave BREVO_API_KEY empty)
 npm install
 npm run dev              # http://localhost:3000 — login emails are printed in the terminal
 npm test                 # no AWS needed
