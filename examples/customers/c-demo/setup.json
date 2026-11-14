@@ -1,0 +1,22 @@
+{
+  "updatedAt": "2026-11-02",
+  "rooms": [
+    {
+      "name": "Eingang",
+      "devices": [
+        { "name": "Türsensor", "type": "Tür-/Fensterkontakt", "purpose": "Meldet, wenn die Haustür geöffnet wird." },
+        { "name": "Bewegungsmelder", "type": "Präsenzsensor", "purpose": "Schaltet das Licht im Flur automatisch." }
+      ]
+    },
+    {
+      "name": "Wohnzimmer",
+      "devices": [
+        { "name": "Steckdose Stehlampe", "type": "Smarte Steckdose", "purpose": "Lampe per App und nach Zeitplan schalten." }
+      ]
+    }
+  ],
+  "alertContacts": [
+    { "name": "Max Muster", "role": "Sohn", "phone": "+41 79 000 00 00" }
+  ],
+  "notes": "Monatlicher Bericht per E-Mail. Alarme gehen als Push-Nachricht an die oben genannten Kontakte."
+}
