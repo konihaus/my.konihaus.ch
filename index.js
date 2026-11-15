@@ -22,6 +22,7 @@ import {
   isValidId,
 } from './lib/store.js';
 import { sendMail } from './lib/mail.js';
+import { loginMail as renderLoginMail } from './lib/mail-template.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -74,14 +75,6 @@ function rateLimited(key, max, windowMs = 15 * 60 * 1000) {
 }
 
 // ---------- auth routes ----------
-const loginMail = {
-  de: (link) =>
-    `Guten Tag\n\nHier ist Ihr persönlicher Anmeldelink für Ihr Konihaus-Konto (gültig 15 Minuten, einmal verwendbar):\n\n${link}\n\nWenn Sie das nicht angefordert haben, können Sie diese E-Mail ignorieren.\n\nKonihaus`,
-  en: (link) =>
-    `Hello\n\nHere is your personal sign-in link for your Konihaus account (valid for 15 minutes, single use):\n\n${link}\n\nIf you did not request this, you can ignore this email.\n\nKonihaus`,
-};
-const loginSubject = { de: 'Ihr Anmeldelink für Konihaus', en: 'Your Konihaus sign-in link' };
-
 app.post('/api/auth/request', async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const neutral = () => res.json({ ok: true }); // identical answer whether or not the email exists
@@ -95,7 +88,8 @@ app.post('/api/auth/request', async (req, res) => {
         const lang = customer.profile.language === 'en' ? 'en' : 'de';
         const token = await createLoginToken(cid);
         const link = `${baseUrl()}/auth/verify?token=${token}`;
-        await sendMail({ to: customer.profile.email, subject: loginSubject[lang], text: loginMail[lang](link) });
+        const mail = renderLoginMail({ lang, link, name: customer.profile.name, baseUrl: baseUrl() });
+        await sendMail({ to: customer.profile.email, subject: mail.subject, text: mail.text, html: mail.html });
       }
     }
   } catch (e) {
