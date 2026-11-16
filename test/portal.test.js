@@ -194,3 +194,30 @@ test('tampered session cookie is rejected', async () => {
   const forged = `${name}=${decodeURIComponent(val).replace(/.$/, (c) => (c === 'A' ? 'B' : 'A'))}`;
   assert.equal((await J(forged, 'GET', '/me')).status, 401);
 });
+
+test('passkeys: endpoints need a session, challenges are required and single-purpose', async () => {
+  assert.equal((await fetch(`${base}/api/passkeys`)).status, 401);
+  const noSession = await fetch(`${base}/api/passkeys/options`, { method: 'POST', headers: ORIGIN });
+  assert.equal(noSession.status, 401);
+
+  // public sign-in options work without a session and set a signed challenge cookie
+  const opt = await fetch(`${base}/api/auth/passkey/options`, { method: 'POST', headers: ORIGIN });
+  assert.equal(opt.status, 200);
+  assert.ok((await opt.json()).challenge);
+  assert.match(opt.headers.get('set-cookie') || '', /HttpOnly/i);
+
+  // verify without a challenge cookie, or with a bogus response, gives the uniform 401
+  const bad = await fetch(`${base}/api/auth/passkey/verify`, {
+    method: 'POST',
+    headers: { ...ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'x', response: { userHandle: 'c-anna' } }),
+  });
+  assert.equal(bad.status, 401);
+  assert.equal((await bad.json()).error, 'passkey_failed');
+
+  // registration verify needs a registration challenge issued to this customer
+  const { cookie } = await login('c-anna');
+  const reg = await J(cookie, 'POST', '/passkeys/verify', { name: 'x', response: {} });
+  assert.ok(reg.status >= 400 && reg.status < 500);
+  assert.deepEqual(await (await J(cookie, 'GET', '/passkeys')).json(), []);
+});

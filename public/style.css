@@ -114,3 +114,9 @@ textarea { min-height: 9rem; resize: vertical; }
   dl.facts { grid-template-columns: 1fr; }
   dl.facts dt { margin-top: .5rem; }
 }
+
+.btn.secondary { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+.btn.small { margin-top: 0; padding: .35rem .8rem; font-size: .9rem; }
+.alt .btn { width: 100%; margin-top: .25rem; }
+.divider { text-align: center; margin: 1.25rem 0 .5rem; }
+ul.plain li.row { align-items: center; }

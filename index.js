@@ -22,6 +22,10 @@ import {
   isValidId,
 } from './lib/store.js';
 import { sendMail } from './lib/mail.js';
+import {
+  relyingParty, challengeCookie, clearChallengeCookie, readChallenge, listPasskeys, publicView, removePasskey,
+  registrationOptions, finishRegistration, authenticationOptions, finishAuthentication, PasskeyError,
+} from './lib/passkeys.js';
 import { loginMail as renderLoginMail } from './lib/mail-template.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +102,44 @@ app.post('/api/auth/request', async (req, res) => {
   neutral();
 });
 
+// ---------- passkey sign-in (usernameless) ----------
+const rp = () => relyingParty(baseUrl());
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+app.post('/api/auth/passkey/options', async (req, res, next) => {
+  try {
+    if (rateLimited(`pko:${req.ip}`, 30)) return res.status(429).json({ error: 'slow_down' });
+    const options = await authenticationOptions(rp());
+    res.set('Cache-Control', 'no-store');
+    res.set('Set-Cookie', challengeCookie('login', options.challenge, { secure: isProd() }));
+    res.json(options);
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/api/auth/passkey/verify', async (req, res) => {
+  const fail = async (status = 401) => {
+    await delay(400);
+    res.set('Set-Cookie', clearChallengeCookie({ secure: isProd() }));
+    res.status(status).json({ error: 'passkey_failed' });
+  };
+  try {
+    if (rateLimited(`pkv:${req.ip}`, 20)) return fail(429);
+    const ch = readChallenge(req.headers.cookie, 'login');
+    if (!ch) return fail();
+    const cid = await finishAuthentication({ rp: rp(), expectedChallenge: ch.c, response: req.body });
+    if (!cid) return fail();
+    const customer = await getCustomer(cid);
+    if (!customer || customer.profile.status === 'disabled') return fail();
+    res.set('Set-Cookie', [sessionCookie(signSession(cid)), clearChallengeCookie({ secure: isProd() })]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('passkey login failed', e?.message);
+    return fail();
+  }
+});
+
 // GET only shows a confirmation button. Mail scanners that prefetch links must not burn the token.
 app.get('/auth/verify', (req, res) => {
   const token = String(req.query.token || '');
@@ -159,12 +201,65 @@ async function requireAuth(req, res, next) {
 const api = express.Router();
 api.use(requireAuth);
 
-api.get('/me', (req, res) => {
-  const { profile, subscription } = req.customer;
-  res.json({
-    profile: { name: profile.name, email: profile.email, language: profile.language || 'de' },
-    subscription,
-  });
+api.get('/me', async (req, res, next) => {
+  try {
+    const { profile, subscription } = req.customer;
+    const passkeys = (await listPasskeys(req.cid, rp().rpID)).length;
+    res.json({
+      profile: { name: profile.name, email: profile.email, language: profile.language || 'de' },
+      subscription,
+      passkeys,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---------- passkey management (signed in) ----------
+api.get('/passkeys', async (req, res, next) => {
+  try {
+    res.json((await listPasskeys(req.cid, rp().rpID)).map(publicView));
+  } catch (e) {
+    next(e);
+  }
+});
+
+api.post('/passkeys/options', async (req, res, next) => {
+  try {
+    if (rateLimited(`pkr:${req.cid}`, 20, 60 * 60 * 1000)) return res.status(429).json({ error: 'slow_down' });
+    const options = await registrationOptions({ cid: req.cid, profile: req.customer.profile, rp: rp() });
+    res.set('Set-Cookie', challengeCookie('register', options.challenge, { secure: isProd(), cid: req.cid }));
+    res.json(options);
+  } catch (e) {
+    if (e instanceof PasskeyError) return res.status(409).json({ error: e.code });
+    next(e);
+  }
+});
+
+api.post('/passkeys/verify', async (req, res, next) => {
+  try {
+    const ch = readChallenge(req.headers.cookie, 'register');
+    if (!ch || ch.cid !== req.cid) return res.status(400).json({ error: 'expired' });
+    const added = await finishRegistration({
+      cid: req.cid, rp: rp(), expectedChallenge: ch.c, response: req.body?.response, name: req.body?.name,
+    });
+    res.set('Set-Cookie', clearChallengeCookie({ secure: isProd() }));
+    res.status(201).json(added);
+  } catch (e) {
+    if (e instanceof PasskeyError) return res.status(409).json({ error: e.code });
+    console.error('passkey registration failed', e?.message);
+    res.status(400).json({ error: 'registration_failed' });
+  }
+});
+
+api.delete('/passkeys/:id', async (req, res, next) => {
+  try {
+    if (!/^[A-Za-z0-9_-]{1,512}$/.test(req.params.id)) return res.status(404).json({ error: 'not_found' });
+    const ok = await removePasskey(req.cid, rp().rpID, req.params.id);
+    res.status(ok ? 200 : 404).json(ok ? { ok: true } : { error: 'not_found' });
+  } catch (e) {
+    next(e);
+  }
 });
 
 api.get('/setup', (req, res) => res.json(req.customer.setup || { rooms: [], alertContacts: [] }));

@@ -101,6 +101,14 @@ npm run reply -- c-anna t-xxxx-yyyy --close
 
 The customer receives an email saying there is a reply (not the text itself) and reads it after signing in.
 
+## Passkeys
+
+Customers can add passkeys (Face ID, Touch ID, Windows Hello, security keys) under **Security** (`#/security`) and then use "Sign in with a passkey" on the sign-in page. The email link stays available as fallback and for recovery.
+
+- Stored per customer in `customers/<id>/passkeys.json` (public key, counter, name, dates). No secret ever leaves the customer's device. Maximum 10 per customer.
+- The relying-party ID is the hostname of `BASE_URL`. **Changing the domain invalidates existing passkeys** (customers then sign in by email link and add a new one), so set `BASE_URL=https://my.konihaus.ch` before customers register passkeys.
+- Challenges are signed with `SESSION_SECRET` and sent in a short-lived HttpOnly cookie (5 minutes), so no extra storage is needed.
+
 ## Security notes
 
 - Same neutral answer for known and unknown emails; login links are single use, 15 minutes, and need a click on a confirmation page (mail scanners cannot burn them).

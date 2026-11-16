@@ -1,4 +1,5 @@
 // Konihaus customer portal — plain DOM, no framework, no innerHTML (all text via textContent).
+import { passkeysSupported, creationOptions, requestOptions, registrationJSON, authenticationJSON } from './passkey.js';
 
 const STR = {
   de: {
@@ -24,6 +25,15 @@ const STR = {
     tooMany: 'Zu viele Nachrichten. Bitte versuchen Sie es später erneut.', fillAll: 'Bitte alle Felder ausfüllen.',
     openThreads: (n) => (n === 1 ? '1 offene Nachricht' : `${n} offene Nachrichten`), none: 'Keine offenen Nachrichten.',
     lastMsg: 'Letzte Nachricht', toMessages: 'Zu den Nachrichten',
+    security: 'Sicherheit', passkeys: 'Passkeys', or: 'oder', passkeySignIn: 'Mit Passkey anmelden',
+    passkeyIntro: 'Mit einem Passkey melden Sie sich ohne E-Mail-Link an: per Face ID, Touch ID, Windows Hello oder Sicherheitsschlüssel. Er bleibt auf Ihrem Gerät und lässt sich nicht erraten oder abfangen.',
+    passkeyNameLabel: 'Name des Passkeys', passkeyNamePh: 'z. B. iPhone oder Laptop', addPasskey: 'Passkey hinzufügen',
+    noPasskeys: 'Noch keine Passkeys.', createdOn: 'Erstellt', lastUsed: 'Zuletzt benutzt', never: 'noch nie',
+    remove: 'Entfernen', confirmRemove: 'Wirklich entfernen?', passkeyAdded: 'Passkey gespeichert.',
+    passkeyFailed: 'Die Anmeldung mit Passkey hat nicht geklappt. Bitte versuchen Sie es erneut oder nutzen Sie den E-Mail-Link.',
+    passkeyCancelled: 'Abgebrochen.', passkeyUnsupported: 'Dieser Browser unterstützt keine Passkeys.',
+    passkeyLimit: 'Sie können höchstens 10 Passkeys speichern.', passkeyExists: 'Dieses Gerät hat bereits einen Passkey für Ihr Konto.',
+    passkeyNudgeTitle: 'Schneller anmelden', passkeyNudgeText: 'Richten Sie einen Passkey ein und melden Sie sich künftig mit einem Fingertipp an.', setUpPasskey: 'Passkey einrichten',
   },
   en: {
     signIn: 'Sign in', email: 'Email address', sendLink: 'Send sign-in link',
@@ -48,6 +58,15 @@ const STR = {
     tooMany: 'Too many messages. Please try again later.', fillAll: 'Please fill in all fields.',
     openThreads: (n) => (n === 1 ? '1 open message' : `${n} open messages`), none: 'No open messages.',
     lastMsg: 'Last message', toMessages: 'Go to messages',
+    security: 'Security', passkeys: 'Passkeys', or: 'or', passkeySignIn: 'Sign in with a passkey',
+    passkeyIntro: 'A passkey lets you sign in without an email link: with Face ID, Touch ID, Windows Hello or a security key. It stays on your device and cannot be guessed or intercepted.',
+    passkeyNameLabel: 'Passkey name', passkeyNamePh: 'e.g. iPhone or laptop', addPasskey: 'Add a passkey',
+    noPasskeys: 'No passkeys yet.', createdOn: 'Created', lastUsed: 'Last used', never: 'never',
+    remove: 'Remove', confirmRemove: 'Really remove?', passkeyAdded: 'Passkey saved.',
+    passkeyFailed: 'Signing in with a passkey did not work. Please try again or use the email link.',
+    passkeyCancelled: 'Cancelled.', passkeyUnsupported: 'This browser does not support passkeys.',
+    passkeyLimit: 'You can store at most 10 passkeys.', passkeyExists: 'This device already has a passkey for your account.',
+    passkeyNudgeTitle: 'Sign in faster', passkeyNudgeText: 'Set up a passkey and sign in with a single touch from now on.', setUpPasskey: 'Set up a passkey',
   },
 };
 
@@ -115,7 +134,7 @@ function shell(active, ...content) {
     h('div', { class: 'wrap' },
       h('header', { class: 'top' },
         h('span', { class: 'brand' }, 'Konihaus'),
-        h('nav', { 'aria-label': 'Main' }, link('#/', 'overview'), link('#/setup', 'setup'), link('#/messages', 'messages')),
+        h('nav', { 'aria-label': 'Main' }, link('#/', 'overview'), link('#/setup', 'setup'), link('#/messages', 'messages'), link('#/security', 'security')),
         h('button', { class: 'linklike', type: 'button', onclick: signOut }, t('signOut'))
       ),
       h('main', {}, ...content)
@@ -147,10 +166,32 @@ function renderLogin() {
       if (!r.ok) btn.disabled = false;
     },
   }, h('label', { for: 'email' }, t('email')), input, btn, msg);
+
+  const pkMsg = h('div', { role: 'status' });
+  const pkBtn = h('button', {
+    class: 'btn secondary', type: 'button',
+    onclick: async () => {
+      pkBtn.disabled = true;
+      pkMsg.replaceChildren();
+      try {
+        const o = await api('/auth/passkey/options', { method: 'POST' });
+        if (!o.ok) throw new Error('options');
+        const cred = await navigator.credentials.get({ publicKey: requestOptions(o.data) });
+        const r = await api('/auth/passkey/verify', { method: 'POST', body: authenticationJSON(cred) });
+        if (!r.ok) throw new Error('verify');
+        return boot();
+      } catch (err) {
+        pkMsg.replaceChildren(h('p', { class: 'error' }, err.name === 'NotAllowedError' ? t('passkeyCancelled') : t('passkeyFailed')));
+      }
+      pkBtn.disabled = false;
+    },
+  }, t('passkeySignIn'));
+  const pk = passkeysSupported() ? h('div', { class: 'alt' }, h('p', { class: 'divider muted small' }, t('or')), pkBtn, pkMsg) : null;
+
   root.replaceChildren(
     h('div', { class: 'wrap' },
       h('header', { class: 'top' }, h('span', { class: 'brand' }, 'Konihaus')),
-      h('main', {}, h('h1', {}, t('signIn')), h('div', { class: 'card' }, h('p', { class: 'muted' }, t('loginIntro')), form))
+      h('main', {}, h('h1', {}, t('signIn')), h('div', { class: 'card' }, h('p', { class: 'muted' }, t('loginIntro')), form, pk))
     )
   );
 }
@@ -188,7 +229,11 @@ async function viewOverview() {
               h('td', {}, fmtDate(i.dueDate)), h('td', {}, badge(t(`inv_${i.status}`), invKind[i.status] || ''))))))
       : h('p', { class: 'muted' }, t('noInvoices')));
 
-  shell('overview', h('h1', {}, t('hello', me.profile.name)), h('div', { class: 'grid' }, subCard, msgCard), invCard);
+  const nudge = passkeysSupported() && me.passkeys === 0
+    ? h('section', { class: 'card' }, h('h2', {}, t('passkeyNudgeTitle')), h('p', {}, t('passkeyNudgeText')),
+        h('a', { class: 'btn', href: '#/security' }, t('setUpPasskey')))
+    : null;
+  shell('overview', h('h1', {}, t('hello', me.profile.name)), h('div', { class: 'grid' }, subCard, msgCard), nudge, invCard);
 }
 
 // ---------- setup ----------
@@ -294,6 +339,61 @@ async function viewThread(id) {
     h('div', { class: 'card' }, form));
 }
 
+// ---------- security (passkeys) ----------
+let flash = null;
+
+async function viewSecurity() {
+  const list = (await api('/passkeys')).data || [];
+  const msg = h('div', { role: 'status' });
+  const setMsg = (text, ok) => msg.replaceChildren(h('p', { class: ok ? 'ok-text' : 'error' }, text));
+  if (flash) { setMsg(flash, true); flash = null; }
+
+  const name = h('input', { id: 'pkname', maxlength: 60, placeholder: t('passkeyNamePh'), autocomplete: 'off' });
+  const btn = h('button', { class: 'btn', type: 'submit' }, t('addPasskey'));
+  const form = h('form', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      if (!passkeysSupported()) return setMsg(t('passkeyUnsupported'));
+      btn.disabled = true;
+      try {
+        const o = await api('/passkeys/options', { method: 'POST' });
+        if (!o.ok) { setMsg(o.status === 409 ? t('passkeyLimit') : t('error')); btn.disabled = false; return; }
+        const cred = await navigator.credentials.create({ publicKey: creationOptions(o.data) });
+        const r = await api('/passkeys/verify', { method: 'POST', body: { name: name.value, response: registrationJSON(cred) } });
+        if (r.ok) { me.passkeys = (me.passkeys || 0) + 1; flash = t('passkeyAdded'); return viewSecurity(); }
+        setMsg(r.status === 409 ? t('passkeyExists') : t('passkeyFailed'));
+      } catch (err) {
+        setMsg(err.name === 'InvalidStateError' ? t('passkeyExists') : err.name === 'NotAllowedError' ? t('passkeyCancelled') : t('passkeyFailed'));
+      }
+      btn.disabled = false;
+    },
+  }, h('label', { for: 'pkname' }, t('passkeyNameLabel')), name, btn, msg);
+
+  const rows = list.map((p) => {
+    let armed = false;
+    const rm = h('button', {
+      class: 'btn secondary small', type: 'button',
+      onclick: async () => {
+        if (!armed) { armed = true; rm.textContent = t('confirmRemove'); return; }
+        rm.disabled = true;
+        const r = await api(`/passkeys/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+        if (r.ok) { me.passkeys = Math.max(0, (me.passkeys || 1) - 1); return viewSecurity(); }
+        rm.disabled = false;
+        setMsg(t('error'));
+      },
+    }, t('remove'));
+    return h('li', { class: 'row' },
+      h('div', {}, h('strong', {}, p.name),
+        h('div', { class: 'small muted' }, `${t('createdOn')} ${fmtDateTime(p.createdAt)} · ${t('lastUsed')} ${p.lastUsed ? fmtDateTime(p.lastUsed) : t('never')}`)),
+      rm);
+  });
+
+  shell('security', h('h1', {}, t('passkeys')),
+    h('div', { class: 'card' }, h('p', { class: 'muted' }, t('passkeyIntro')),
+      rows.length ? h('ul', { class: 'plain' }, rows) : h('p', { class: 'muted' }, t('noPasskeys')),
+      passkeysSupported() ? form : h('p', { class: 'error' }, t('passkeyUnsupported'))));
+}
+
 // ---------- router ----------
 async function route() {
   if (!me) return;
@@ -301,6 +401,7 @@ async function route() {
   try {
     if (hash === '#/' || hash === '') return await viewOverview();
     if (hash === '#/setup') return await viewSetup();
+    if (hash === '#/security') return await viewSecurity();
     if (hash === '#/messages') return await viewThreads();
     if (hash === '#/messages/new') return viewNewThread();
     const m = hash.match(/^#\/messages\/([a-z0-9_-]+)$/);
